@@ -38,11 +38,12 @@ def num_range(s: str) -> List[int]:
 @click.pass_context
 @click.option('--network', 'network_pkl', help='Network pickle filename', required=True)
 @click.option('--seeds', type=num_range, help='List of random seeds')
-@click.option('--trunc', 'truncation_psi', type=float, help='Truncation psi', default=1, show_default=True)
+@click.option('--trunc', 'truncation_psi', type=float, help='Truncation psi', default=0.8, show_default=True)
 @click.option('--class', 'class_idx', type=int, help='Class label (unconditional if not specified)')
 @click.option('--noise-mode', help='Noise mode', type=click.Choice(['const', 'random', 'none']), default='const', show_default=True)
 @click.option('--projected-w', help='Projection result file', type=str, metavar='FILE')
 @click.option('--outdir', help='Where to save the output images', type=str, required=True, metavar='DIR')
+@click.option('--resize', help='resize', type=int, default=-1, metavar='INT')
 def generate_images(
     ctx: click.Context,
     network_pkl: str,
@@ -51,32 +52,9 @@ def generate_images(
     noise_mode: str,
     outdir: str,
     class_idx: Optional[int],
-    projected_w: Optional[str]
+    projected_w: Optional[str],
+    resize: int,
 ):
-    """Generate images using pretrained network pickle.
-
-    Examples:
-
-    \b
-    # Generate curated MetFaces images without truncation (Fig.10 left)
-    python generate.py --outdir=out --trunc=1 --seeds=85,265,297,849 \\
-        --network=https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metfaces.pkl
-
-    \b
-    # Generate uncurated MetFaces images with truncation (Fig.12 upper left)
-    python generate.py --outdir=out --trunc=0.7 --seeds=600-605 \\
-        --network=https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metfaces.pkl
-
-    \b
-    # Generate class conditional CIFAR-10 images (Fig.17 left, Car)
-    python generate.py --outdir=out --seeds=0-35 --class=1 \\
-        --network=https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/cifar10.pkl
-
-    \b
-    # Render an image from projected W
-    python generate.py --outdir=out --projected_w=projected_w.npz \\
-        --network=https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metfaces.pkl
-    """
 
     print('Loading networks from "%s"...' % network_pkl)
     device = torch.device('cuda')
@@ -84,6 +62,17 @@ def generate_images(
         G = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
 
     os.makedirs(outdir, exist_ok=True)
+
+    if len(seeds) == 1:
+        seeds = np.arange(0, seeds[0])
+    elif len(seeds) == 2:
+        seeds = np.arange(seeds[0], seeds[1])
+    else:
+        raise ValueError("seeds should be given as {num1, num2} or {num1}}")
+
+    # seeds = np.arange(0, 100000)  # train
+    # seeds = np.arange(100000, 100500)  # val
+    # seeds = np.arange(100500, 101000)  # test
 
     # Synthesize the result of a W projection.
     if projected_w is not None:
@@ -118,7 +107,11 @@ def generate_images(
         z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim)).to(device)
         img = G(z, label, truncation_psi=truncation_psi, noise_mode=noise_mode)
         img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
-        PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/seed{seed:04d}.png')
+        if resize > 0:
+            PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').resize((resize, resize), PIL.Image.ANTIALIAS).save(f'{outdir}/seed{seed:05d}.png')
+        else:
+            PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/seed{seed:05d}.png')
+
 
 
 #----------------------------------------------------------------------------
