@@ -34,19 +34,14 @@ class MultiSequential(nn.Sequential):
 
 
 class FC_Block(nn.Module):
-    def __init__(self, z_dim=512, c_dim=136, lrelu=True):
+    def __init__(self, z_dim=512, c_dim=136):
         super(FC_Block, self).__init__()
 
         self.affine = spectral_norm(nn.Linear(c_dim, z_dim))
-        if lrelu:
-            self.post = MultiSequential(
-                spectral_norm(nn.Linear(z_dim, z_dim)),
-                nn.LeakyReLU(0.2)
-            )
-        else:
-            self.post = MultiSequential(
-                spectral_norm(nn.Linear(z_dim, z_dim)),
-            )
+        self.post = MultiSequential(
+            nn.LeakyReLU(0.2),
+            spectral_norm(nn.Linear(z_dim, z_dim)),
+        )
 
     def forward(self, z_in, c):
         c_out = self.affine(c)
@@ -72,9 +67,8 @@ class FC_Model(nn.Module):
 
     def _make_layer(self, block, z_dim, c_dim, n):
         layers = []
-        for _ in range(n - 1):
-            layers.append(block(z_dim, c_dim, lrelu=True))
-        layers.append(block(z_dim, c_dim, lrelu=False))
+        for _ in range(n):
+            layers.append(block(z_dim, c_dim))
         return layers
 
     def forward(self, z, c):
@@ -136,7 +130,7 @@ def train(args, model, data_loader, criterion, optimizer, scheduler, device):
                 if epoch_loss < best_loss:
                     best_loss = epoch_loss
                     best_model_wts = copy.deepcopy(model.state_dict())
-                    torch.save(best_model_wts, os.path.join(args.ckpt_dir, f'model_{args.lr}.pth'))
+                    torch.save(best_model_wts, os.path.join(args.ckpt_dir, f'model_{args.lr}_{args.batch_size}_{args.num_mlp_layers}.pth'))
 
         scheduler.step()
 
@@ -156,7 +150,7 @@ def main():
 
     parser.add_argument('--z_dim', type=int, default=512, help='latent_dim')
     parser.add_argument('--c_dim', type=int, default=136, help='class_dim')
-    parser.add_argument('--num_mlp_layers', type=int, default=15, help='number of mlp layers')
+    parser.add_argument('--num_mlp_layers', type=int, default=6, help='number of mlp layers')
     parser.add_argument('--batch_size', type=int, default=8, help='batch size')
     parser.add_argument('--num_epochs', type=int, default=40, help='number of epochs to run')
 
@@ -208,7 +202,12 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = ExponentialLR(optimizer, gamma=0.9)
 
-    train(args, model, data_loader, criterion, optimizer, scheduler, device)
+    model, val_history = train(args, model, data_loader, criterion, optimizer, scheduler, device)
+
+    logging.info(val_history)
+    logging.info('Save validation history')
+    logging.info('-' * 10)
+    logging.info('Successfully finished training!')
 
 
 

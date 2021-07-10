@@ -18,43 +18,43 @@ class FC_Model(nn.Module):
         # Block 1
         self.affine = spectral_norm(nn.Linear(c_dim, z_dim))
         self.post = nn.Sequential(
+            nn.LeakyReLU(0.2),
             spectral_norm(nn.Linear(z_dim, z_dim)),
-            nn.LeakyReLU(0.2)
         )
 
         # Block 2
         self.affine2 = spectral_norm(nn.Linear(c_dim, z_dim))
         self.post2 = nn.Sequential(
+            nn.LeakyReLU(0.2),
             spectral_norm(nn.Linear(z_dim, z_dim)),
-            nn.LeakyReLU(0.2)
         )
 
         # Block 3
         self.affine3 = spectral_norm(nn.Linear(c_dim, z_dim))
         self.post3 = nn.Sequential(
+            nn.LeakyReLU(0.2),
             spectral_norm(nn.Linear(z_dim, z_dim)),
-            nn.LeakyReLU(0.2)
         )
 
         # Block 4
         self.affine4 = spectral_norm(nn.Linear(c_dim, z_dim))
         self.post4 = nn.Sequential(
+            nn.LeakyReLU(0.2),
             spectral_norm(nn.Linear(z_dim, z_dim)),
-            nn.LeakyReLU(0.2)
         )
 
         # Block 5
         self.affine5 = spectral_norm(nn.Linear(c_dim, z_dim))
         self.post5 = nn.Sequential(
+            nn.LeakyReLU(0.2),
             spectral_norm(nn.Linear(z_dim, z_dim)),
-            nn.LeakyReLU(0.2)
         )
 
         # Block 6
         self.affine6 = spectral_norm(nn.Linear(c_dim, z_dim))
         self.post6 = nn.Sequential(
+            nn.LeakyReLU(0.2),
             spectral_norm(nn.Linear(z_dim, z_dim)),
-            # nn.LeakyReLU(0.2)
         )
 
     def forward(self, z, c):
