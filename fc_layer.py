@@ -3,6 +3,9 @@
 # https://github.com/kuangliu/pytorch-cifar/blob/master/models/resnet.py
 # https://github.com/eriklindernoren/PyTorch-GAN/blob/master/implementations/cgan/cgan.py
 # https://gist.github.com/rosinality/a96c559d84ef2b138e486acf27b5a56e
+# adain: https://github.com/rosinality/style-based-gan-pytorch/blob/b01ffcdcbca6d8bcbc5eb402c5d8180f4921aae4/model.py#L267
+# spectral norm: https://github.com/christiancosgrove/pytorch-spectral-normalization-gan/blob/master/spectral_normalization.py
+# multiple inputs: https://github.com/pytorch/pytorch/issues/19808#
 
 import os
 import time
@@ -22,7 +25,6 @@ from torch.optim.lr_scheduler import ExponentialLR
 from datasets.sg2 import StyleGAN2_Data
 
 
-# multiple inputs reference: https://github.com/pytorch/pytorch/issues/19808#
 class MultiSequential(nn.Sequential):
     def forward(self, *inputs):
         for module in self._modules.values():
@@ -33,33 +35,46 @@ class MultiSequential(nn.Sequential):
         return inputs
 
 
-class FC_Block(nn.Module):
+class AdaIN(nn.Module):
     def __init__(self, z_dim=512, c_dim=136):
-        super(FC_Block, self).__init__()
-
+        super().__init__()
         self.affine = spectral_norm(nn.Linear(c_dim, z_dim))
-        self.post = MultiSequential(
+        self.linear = spectral_norm(nn.Linear(z_dim, 2))
+        # self.linear.weight.data.normal_()
+        # self.linear.weight.data.zero_()
+
+    def forward(self, z_in, c):
+        z_out = self.norm1d(z_in)
+        c_out = self.affine(c)
+        c_out = self.linear(c_out)
+        gamma, beta = c_out.chunk(2, 1)
+        z_out = (1 + gamma) * z_out + beta
+
+        return z_out, c
+
+    def norm1d(self, x, eps=1e-5):
+        return (x - torch.mean(x)) / (torch.std(x) + eps)
+
+
+class FC_Block(nn.Module):
+    def __init__(self, z_dim, c_dim):
+        super().__init__()
+
+        self.adain = AdaIN(z_dim, c_dim)
+        self.fc = MultiSequential(
             nn.LeakyReLU(0.2),
             spectral_norm(nn.Linear(z_dim, z_dim)),
         )
 
     def forward(self, z_in, c):
-        c_out = self.affine(c)
-        z_out = self.adain(z_in, c_out)
-        z_out = self.post(z_out)
+        z_out, c = self.adain(z_in, c)
+        z_out = self.fc(z_out)
         return z_out, c
-
-    def adain(self, x, y, eps=1e-5):
-        mean_x = torch.mean(x)
-        mean_y = torch.mean(y)
-        std_x = torch.std(x)
-        std_y = torch.std(y)
-        return (x - mean_x) / (std_x + eps) * std_y + mean_y
 
 
 class FC_Model(nn.Module):
     def __init__(self, z_dim=512, c_dim=136, n=6):
-        super(FC_Model, self).__init__()
+        super().__init__()
 
         self.model = MultiSequential(
             *self._make_layer(FC_Block, z_dim, c_dim, n)
@@ -88,7 +103,7 @@ def train(args, model, data_loader, criterion, optimizer, scheduler, device):
     for epoch in range(args.num_epochs):
 
         logging.info('-' * 10)
-        logging.info(f'Epoch {epoch}/{args.num_epochs - 1}')
+        logging.info(f'Epoch {epoch}/{args.num_epochs - 1} | Learning rate: {scheduler.get_last_lr()[-1]:.6f}')
 
         for phase in ['train', 'val']:
             if phase == 'train':
@@ -130,8 +145,8 @@ def train(args, model, data_loader, criterion, optimizer, scheduler, device):
                 if epoch_loss < best_loss:
                     best_loss = epoch_loss
                     best_model_wts = copy.deepcopy(model.state_dict())
-                    torch.save(best_model_wts, os.path.join(args.ckpt_dir, f'model_{args.lr}_{args.batch_size}_{args.num_mlp_layers}.pth'))
-
+                    torch.save(best_model_wts, os.path.join(args.ckpt_dir, f'model_{args.lr}_{args.batch_size}_{args.num_mlp_layers}_{args.weight_decay}.pth'))
+            
         scheduler.step()
 
     time_elapsed = time.time() - since
@@ -146,18 +161,19 @@ def train(args, model, data_loader, criterion, optimizer, scheduler, device):
 
 def main():
 
-    parser = argparse.ArgumentParser("PyTorch SE-Net Fine-tuning Code")
+    parser = argparse.ArgumentParser("MLP layer (auxiliary network) training")
 
     parser.add_argument('--z_dim', type=int, default=512, help='latent_dim')
     parser.add_argument('--c_dim', type=int, default=136, help='class_dim')
     parser.add_argument('--num_mlp_layers', type=int, default=6, help='number of mlp layers')
     parser.add_argument('--batch_size', type=int, default=8, help='batch size')
-    parser.add_argument('--num_epochs', type=int, default=40, help='number of epochs to run')
+    parser.add_argument('--num_epochs', type=int, default=25, help='number of epochs to run')
 
     parser.add_argument('--lr', type=float, default=2e-4, help='learning rate')
-    parser.add_argument('--weight_decay', type=float, default=1e-4, help='l2 norm')
+    parser.add_argument('--lr_gamma', type=float, default=0.998, help='gamma for learning rate schedule')
+    parser.add_argument('--weight_decay', type=float, default=0.0, help='l2 norm')
 
-    parser.add_argument('--root', type=str, default='../generated', help='training data dir')
+    parser.add_argument('--root', type=str, default='../data', help='training data dir')
     parser.add_argument('--ckpt_dir', type=str, default='ckpt', help='model checkpoint save path')
     parser.add_argument('--log_dir', type=str, default='log', help='save directory for log file')
 
@@ -176,10 +192,13 @@ def main():
         ]
     )
 
+    logging.info(f"Set Arguments: {args}")
+
     logging.info("Loading Datasets...")
 
     data = {
-        'train': StyleGAN2_Data(root=args.root, split='train'),
+        # 'train': StyleGAN2_Data(root=args.root, split='train'),  # 100k data
+        'train': StyleGAN2_Data(root=args.root, split='train_all'),  # 200k data
         'val': StyleGAN2_Data(root=args.root, split='val')
         }
 
@@ -196,11 +215,13 @@ def main():
 
     logging.info(model)
 
+    # model = nn.DataParallel(model)
     model = model.to(device)
-
+    
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = ExponentialLR(optimizer, gamma=0.9)
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=1e-6)
+    scheduler = ExponentialLR(optimizer, gamma=args.lr_gamma)
+    # scheduler = CosineAnnealingLR(optimizer, gamma=args.lr_gamma)    
 
     model, val_history = train(args, model, data_loader, criterion, optimizer, scheduler, device)
 
