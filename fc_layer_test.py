@@ -42,8 +42,8 @@ def main():
     parser.add_argument('--c_dim', type=int, default=136, help='class_dim')
     parser.add_argument('--num_mlp_layers', type=int, default=6, help='number of mlp layers')
     parser.add_argument('--batch_size', type=int, default=8, help='batch size')
-    parser.add_argument('--root', type=str, default='../generated', help='training data dir')
-    parser.add_argument('--ckpt', type=str, default='ckpt/model_0.0002_8_6_1e-08.pth', help='model checkpoint save path')
+    parser.add_argument('--root', type=str, default='../data', help='training data dir')
+    parser.add_argument('--ckpt', type=str, default='ckpt/model_0.0002_128_6_0.0.pth', help='model checkpoint save path')
 
     args = parser.parse_args()
 

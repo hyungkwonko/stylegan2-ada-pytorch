@@ -87,8 +87,8 @@ class FC_Model(nn.Module):
         return layers
 
     def forward(self, z, c):
-        z_out = self.model(z, c)
-        return z_out, c
+        out = self.model(z, c)
+        return out
 
 
 def train(args, model, data_loader, criterion, optimizer, scheduler, device):
@@ -123,8 +123,7 @@ def train(args, model, data_loader, criterion, optimizer, scheduler, device):
 
                 # forward
                 with torch.set_grad_enabled(phase == 'train'):
-                    outputs = model(latents, labels)
-                    outputs = outputs[0][0]
+                    (outputs, _) = model(latents, labels)
 
                     loss = criterion(outputs, latents)
 
@@ -219,7 +218,7 @@ def main():
     model = model.to(device)
     
     criterion = nn.MSELoss()
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, eps=1e-6)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = ExponentialLR(optimizer, gamma=args.lr_gamma)
     # scheduler = CosineAnnealingLR(optimizer, gamma=args.lr_gamma)    
 
