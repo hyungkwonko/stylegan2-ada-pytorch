@@ -5,3 +5,6 @@ out/
 assets/
 ckpt/
 log/
+data/
+pretrained/
+results/
