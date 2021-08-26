@@ -63,34 +63,6 @@ def generate_images(
 
     os.makedirs(outdir, exist_ok=True)
 
-    if len(seeds) == 1:
-        seeds = np.arange(0, seeds[0])
-    elif len(seeds) == 2:
-        seeds = np.arange(seeds[0], seeds[1])
-    else:
-        raise ValueError("seeds should be given as {num1, num2} or {num1}}")
-
-    # seeds = np.arange(0, 100000)  # train
-    # seeds = np.arange(100000, 100500)  # val
-    # seeds = np.arange(100500, 101000)  # test
-
-    # Synthesize the result of a W projection.
-    if projected_w is not None:
-        if seeds is not None:
-            print ('warn: --seeds is ignored when using --projected-w')
-        print(f'Generating images from projected W "{projected_w}"')
-        ws = np.load(projected_w)['w']
-        ws = torch.tensor(ws, device=device) # pylint: disable=not-callable
-        assert ws.shape[1:] == (G.num_ws, G.w_dim)
-        for idx, w in enumerate(ws):
-            img = G.synthesis(w.unsqueeze(0), noise_mode=noise_mode)
-            img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
-            img = PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/proj{idx:02d}.jpg')
-        return
-
-    if seeds is None:
-        ctx.fail('--seeds option is required when not using --projected-w')
-
     # Labels.
     label = torch.zeros([1, G.c_dim], device=device)
     if G.c_dim != 0:
@@ -102,15 +74,17 @@ def generate_images(
             print ('warn: --class=lbl ignored when running on an unconditional network')
 
     # Generate images.
-    for seed_idx, seed in enumerate(seeds):
-        print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
-        z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim)).to(device)
+    seed = 1
+    z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim)).to(device)
+    noise = torch.randn(1, G.z_dim).to(device)
+    for i in range(20):
+        z += 0.05 * noise
         img = G(z, label, truncation_psi=truncation_psi, noise_mode=noise_mode)
         img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
         if resize > 0:
             PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').resize((resize, resize), PIL.Image.ANTIALIAS).save(f'{outdir}/seed{seed:05d}.jpg')
         else:
-            PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/seed{seed:05d}.jpg')
+            PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/seed1_{i:05d}.jpg')
 
 
 

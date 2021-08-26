@@ -70,10 +70,6 @@ def generate_images(
     else:
         raise ValueError("seeds should be given as {num1, num2} or {num1}}")
 
-    # seeds = np.arange(0, 100000)  # train
-    # seeds = np.arange(100000, 100500)  # val
-    # seeds = np.arange(100500, 101000)  # test
-
     # Synthesize the result of a W projection.
     if projected_w is not None:
         if seeds is not None:
@@ -85,7 +81,7 @@ def generate_images(
         for idx, w in enumerate(ws):
             img = G.synthesis(w.unsqueeze(0), noise_mode=noise_mode)
             img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
-            img = PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/proj{idx:02d}.jpg')
+            img = PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/proj{idx:02d}.png')
         return
 
     if seeds is None:
@@ -102,15 +98,16 @@ def generate_images(
             print ('warn: --class=lbl ignored when running on an unconditional network')
 
     # Generate images.
-    for seed_idx, seed in enumerate(seeds):
-        print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
+    seed = 1
+    for i in range(30):
         z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim)).to(device)
+        z += 0.2 * torch.randn(1, G.z_dim).to(device)
         img = G(z, label, truncation_psi=truncation_psi, noise_mode=noise_mode)
         img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
         if resize > 0:
             PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').resize((resize, resize), PIL.Image.ANTIALIAS).save(f'{outdir}/seed{seed:05d}.jpg')
         else:
-            PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/seed{seed:05d}.jpg')
+            PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/seed1_{i:05d}.jpg')
 
 
 

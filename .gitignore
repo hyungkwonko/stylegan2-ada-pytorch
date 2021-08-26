@@ -6,5 +6,6 @@ assets/
 ckpt/
 log/
 data/
-pretrained/
+pretrained_models/
 results/
+outdir/
